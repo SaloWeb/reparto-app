@@ -2,11 +2,14 @@
 const STORAGE_KEY = 'reparto-app-stops-v1';
 const START_KEY = 'reparto-app-start-v1';
 const MODE_KEY = 'reparto-app-mode-v1';
+const ROUTE_KEY = 'reparto-app-route-v1';
 let stops = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
 let startPoint = JSON.parse(localStorage.getItem(START_KEY) || 'null');
 let mode = localStorage.getItem(MODE_KEY) || 'foot';
 let map, markersLayer, routeLayer;
-let roadRoute = null; // { latlngs, distanceKm, durationMin, forIds }
+// Se persiste para poder retomar un viaje en curso si se cierra el navegador a mitad de reparto.
+let roadRoute = JSON.parse(localStorage.getItem(ROUTE_KEY) || 'null'); // { latlngs, distanceKm, durationMin, forIds }
+function saveRoute() { localStorage.setItem(ROUTE_KEY, JSON.stringify(roadRoute)); }
 
 /* ===== Ubicacion en vivo (para orientarse mientras camina) ===== */
 let watchId = null;       // id de navigator.geolocation.watchPosition, o null si no esta activo
@@ -401,7 +404,7 @@ async function runOptimize() {
   // Orden rapido offline (linea recta) en el modo actual, para feedback inmediato
   const quickOrdered = optimizeOrder(pending, startPoint, null);
   stops = [...quickOrdered, ...delivered];
-  roadRoute = null;
+  roadRoute = null; saveRoute();
   saveStops(); render(); renderMap();
 
   // Calcular la mejor ruta real por calle para los dos modos posibles
@@ -446,6 +449,7 @@ function pickRouteAndStart(candidate) {
   const delivered = stops.filter(s => s.delivered);
   stops = [...candidate.order, ...delivered];
   roadRoute = { ...candidate.route, forIds: currentPendingIds() };
+  saveRoute();
   saveStops();
   document.getElementById('routeOptionsModal').classList.add('hidden');
   render(); renderMap();
@@ -539,7 +543,7 @@ const menuBackdrop = document.getElementById('menuBackdrop');
 const removeStartBtn = document.getElementById('removeStartBtn');
 function syncRemoveStartBtn() { removeStartBtn.classList.toggle('hidden', !startPoint); }
 removeStartBtn.addEventListener('click', () => {
-  startPoint = null; saveStart(); roadRoute = null; renderMap(); closeMenu();
+  startPoint = null; saveStart(); roadRoute = null; saveRoute(); renderMap(); closeMenu();
   showToast('Punto de partida quitado');
 });
 function openMenu() { syncRemoveStartBtn(); syncLiveUI(); menuPanel.classList.remove('hidden'); menuBackdrop.classList.remove('hidden'); }
@@ -561,7 +565,7 @@ document.getElementById('pasteCancelBtn').addEventListener('click', () => {
 document.getElementById('modeSelect').value = mode;
 document.getElementById('modeSelect').addEventListener('change', (e) => {
   mode = e.target.value; saveMode();
-  roadRoute = null; renderMap();
+  roadRoute = null; saveRoute(); renderMap();
 });
 
 let searchTimer;
@@ -583,7 +587,7 @@ searchInput.addEventListener('input', () => {
           try {
             await addAddress(r.display_name, { lat: parseFloat(r.lat), lon: parseFloat(r.lon) });
             searchInput.value = ''; suggEl.innerHTML = '';
-            roadRoute = null; render(); renderMap();
+            roadRoute = null; saveRoute(); render(); renderMap();
             showToast('Dirección agregada');
           } catch (e) {
             showToast('No se pudo agregar la dirección, probá de nuevo');
@@ -639,9 +643,21 @@ function checkProximity() {
 }
 
 function onLiveError(err) {
-  const reason = err.code === 1 ? 'permiso denegado' : (err.code === 3 ? 'tardó demasiado' : 'sin señal de GPS');
-  showToast('No se pudo seguir tu ubicación (' + reason + ')');
-  stopLiveTracking();
+  // Error de permiso: no tiene sentido seguir escuchando, cortamos el seguimiento.
+  if (err.code === 1) {
+    showToast('No se pudo seguir tu ubicación (permiso denegado)');
+    stopLiveTracking();
+    return;
+  }
+  // Timeout o "posición no disponible" (código 2/3): suele ser una perdida de señal
+  // pasajera (GPS entre edificios, túnel, etc). watchPosition sigue escuchando solo,
+  // así que NO cortamos el tracking - solo avisamos si se repite seguido.
+  const reason = err.code === 3 ? 'tardó demasiado' : 'sin señal de GPS por un momento';
+  const now = Date.now();
+  if (!onLiveError._lastToast || now - onLiveError._lastToast > 8000) {
+    onLiveError._lastToast = now;
+    showToast('Señal débil (' + reason + '), reintentando...');
+  }
 }
 
 function syncLiveUI() {
@@ -684,7 +700,7 @@ document.getElementById('useLocationBtn').addEventListener('click', () => {
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       startPoint = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      saveStart(); roadRoute = null; renderMap();
+      saveStart(); roadRoute = null; saveRoute(); renderMap();
       showToast('Punto de partida actualizado');
     },
     () => showToast('No se pudo obtener tu ubicación'),
@@ -704,7 +720,7 @@ document.getElementById('pasteBtn').addEventListener('click', async () => {
       await addAddress(lines[i]);
       ok++;
     } catch (e) { fail++; }
-    roadRoute = null; render(); renderMap();
+    roadRoute = null; saveRoute(); render(); renderMap();
     if (i < lines.length - 1) await sleep(1100); // respetar limite de Nominatim (1 req/seg)
   }
   statusEl.textContent = `Listo: ${ok} agregadas, ${fail} no encontradas.`;
@@ -724,7 +740,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   closeMenu();
   if (!confirm('¿Borrar todas las direcciones cargadas?')) return;
   stops = []; startPoint = null; roadRoute = null;
-  saveStops(); saveStart(); render(); renderMap();
+  saveStops(); saveStart(); saveRoute(); render(); renderMap();
   setSheetState('peek');
   if (tripActive) endTrip();
 });
@@ -736,7 +752,7 @@ Sortable.create(document.getElementById('stopList'), {
   onEnd: () => {
     const ids = [...document.querySelectorAll('.stop-item')].map(li => li.dataset.id);
     stops = ids.map(id => stops.find(s => s.id === id));
-    roadRoute = null; // el orden a mano invalida la ruta calculada; re-optimizar la vuelve a dibujar
+    roadRoute = null; saveRoute(); // el orden a mano invalida la ruta calculada; re-optimizar la vuelve a dibujar
     saveStops(); render(); renderMap();
   }
 });
