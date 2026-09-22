@@ -28,22 +28,26 @@ una vez instalada. Lo que SÍ necesita conexión es:
 O sea: conviene cargar y optimizar la ruta del día con datos/wifi antes
 de salir a repartir, y después ya podés tildar entregas sin señal.
 
-## Cómo instalarla en el celular de tu amigo
-Para que Android permita "Agregar a pantalla de inicio" con ícono propio,
-la app tiene que estar servida por HTTPS (no alcanza con abrir el archivo
-localmente). La forma más simple y gratis es GitHub Pages:
+## App instalada online
+Ya está publicada en GitHub Pages (HTTPS):
+👉 **https://saloweb.github.io/reparto-app/**
 
-1. Creá un repositorio nuevo en GitHub (puede ser privado o público).
-2. Subí todo el contenido de esta carpeta (`reparto-app/`) a ese repo.
-3. En el repo: Settings → Pages → Source: elegí la rama principal y
-   carpeta `/ (root)`. Guardá.
-4. GitHub te da una URL tipo `https://tu-usuario.github.io/tu-repo/`.
-5. Abrí esa URL en el Chrome del celular de tu amigo → menú (⋮) →
-   "Agregar a pantalla de inicio" (o va a aparecer un cartel automático
-   de instalar).
+Repo: https://github.com/SaloWeb/reparto-app
 
-Si querés, te ayudo a hacer el repo y subirlo por vos (tengo acceso a tu
-terminal). También se puede probar localmente antes en tu netbook con:
+Para instalarla en el celular de tu amigo: abrí esa URL en Chrome →
+menú (⋮) → "Agregar a pantalla de inicio" (o va a aparecer un cartel
+automático de instalar).
+
+Para subir cambios nuevos a partir de ahora:
+```
+cd ~/reparto-app
+git add .
+git commit -m "mensaje del cambio"
+git push
+```
+Unos segundos después de cada push, GitHub Pages actualiza la URL sola.
+
+También se puede probar localmente antes en tu netbook con:
 
 ```
 cd ~/reparto-app
