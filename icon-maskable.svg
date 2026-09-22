@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgm" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2f8cf6"/>
+      <stop offset="1" stop-color="#0b57cf"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bgm)"/>
+  <!-- todo el contenido dentro de la zona segura (~centro 70%) para iconos maskable -->
+  <g transform="translate(66,66) scale(0.74)">
+    <path d="M124 372 C 178 336, 156 258, 232 226 C 300 198, 300 148, 362 116"
+          fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round"
+          stroke-dasharray="1 32" opacity="0.9"/>
+    <g transform="translate(92,296)">
+      <path d="M0 42 L66 8 L132 42 L132 112 L66 146 L0 112 Z" fill="#ffffff"/>
+      <path d="M0 42 L66 76 L132 42" fill="none" stroke="#0b57cf" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M66 76 L66 146" stroke="#0b57cf" stroke-width="7"/>
+    </g>
+    <g transform="translate(298,88)">
+      <path d="M60 0C27 0 0 27 0 60c0 45 60 108 60 108s60-63 60-108C120 27 93 0 60 0z" fill="#ffffff"/>
+      <circle cx="60" cy="58" r="26" fill="#e8a33d"/>
+    </g>
+  </g>
+</svg>

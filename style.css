@@ -1,0 +1,287 @@
+:root {
+  --primary: #1a73e8;
+  --primary-dark: #0b57cf;
+  --accent: #e8a33d;
+  --bg: #f4f6f5;
+  --card: #ffffff;
+  --text: #202124;
+  --muted: #5f6368;
+  --danger: #c1443a;
+  --radius: 14px;
+  --sheet-peek: 116px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+.hidden { display: none !important; }
+
+/* ===== Iconos propios (sprite SVG) ===== */
+.ic {
+  width: 20px; height: 20px; flex-shrink: 0;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  vertical-align: middle;
+}
+.ic-inline { width: 17px; height: 17px; margin-right: 8px; margin-bottom: -3px; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden; /* el scroll vive adentro de la bandeja inferior */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ===== Mapa fullscreen ===== */
+.map-full {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: #dfe3e0;
+}
+
+/* ===== Barra de busqueda flotante ===== */
+.top-bar {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 12px;
+  right: 12px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+.top-bar-row { display: flex; gap: 8px; align-items: center; }
+
+.search-pill {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border-radius: 28px;
+  padding: 11px 8px 11px 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  min-width: 0;
+}
+.search-icon { color: var(--muted); }
+#searchInput {
+  border: none; outline: none; flex: 1; min-width: 0;
+  font-size: 1rem; background: transparent; color: var(--text);
+}
+.icon-btn {
+  border: none; background: transparent; padding: 8px; flex-shrink: 0;
+  color: var(--primary); display: flex; align-items: center; justify-content: center;
+}
+.icon-btn:active { opacity: 0.6; }
+
+.round-btn {
+  width: 46px; height: 46px; border-radius: 50%; background: #fff; border: none;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.18); flex-shrink: 0; color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+}
+.round-btn:active { background: #f2f2f2; }
+
+.suggestions {
+  list-style: none; margin: 0; padding: 0;
+  background: #fff; border-radius: 14px; overflow-y: auto;
+  max-height: 50vh; box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.suggestions:empty { display: none; box-shadow: none; }
+.suggestions li { padding: 12px 14px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+.suggestions li:last-child { border-bottom: none; }
+.suggestions li:active { background: #f2f2f2; }
+
+/* ===== Menu flotante ===== */
+.menu-backdrop { position: fixed; inset: 0; z-index: 39; background: rgba(0,0,0,0.08); }
+.menu-backdrop.hidden { display: none; }
+
+.menu-panel {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 66px);
+  right: 12px;
+  z-index: 41;
+  width: 230px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.menu-panel.hidden { display: none; }
+.menu-panel button {
+  text-align: left; background: none; border: none; padding: 12px;
+  border-radius: 8px; font-size: 0.92rem; color: var(--text); width: 100%;
+  display: flex; align-items: center;
+}
+.menu-panel button:active { background: #f2f2f2; }
+.menu-danger { color: var(--danger); }
+.menu-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; font-size: 0.85rem;
+}
+.menu-row select { padding: 6px 8px; border-radius: 8px; border: 1px solid #ddd; font-size: 0.85rem; }
+
+/* ===== Modal pegar lista ===== */
+.modal {
+  position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.4);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.modal.hidden { display: none; }
+.modal-card {
+  background: #fff; width: 100%; max-width: 640px;
+  border-radius: 18px 18px 0 0; padding: 18px 16px;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+}
+.modal-card h3 { margin: 0 0 10px; font-size: 1.05rem; }
+textarea#pasteArea {
+  width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 10px;
+  font-size: 0.95rem; resize: vertical;
+}
+.modal-actions { display: flex; gap: 8px; margin-top: 10px; }
+.modal-actions .ghost-btn, .modal-actions .primary-btn { flex: 1; margin-top: 0; }
+.status-text { font-size: 0.8rem; color: var(--muted); margin-top: 8px; min-height: 1.2em; }
+
+.primary-btn { background: var(--primary); color: #fff; border: none; padding: 12px 14px; border-radius: 10px; font-size: 0.95rem; }
+.ghost-btn { background: transparent; color: var(--muted); border: 1px solid #ddd; padding: 12px 14px; border-radius: 10px; font-size: 0.95rem; }
+
+/* ===== Botones flotantes (FAB) ===== */
+.fab {
+  position: fixed; right: 16px; border: none; border-radius: 50%;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.3);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 35; cursor: pointer; transition: transform .12s;
+}
+.fab:active { transform: scale(0.94); }
+.fab-locate {
+  width: 46px; height: 46px; background: #fff; color: var(--primary);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sheet-peek) + 76px);
+}
+.fab-locate .ic { width: 22px; height: 22px; }
+.fab-locate.active { background: var(--primary); color: #fff; }
+.fab-optimize {
+  width: 60px; height: 60px; background: var(--primary); color: #fff;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sheet-peek) + 14px);
+}
+.fab-optimize .ic { width: 28px; height: 28px; }
+.fab-optimize:disabled { opacity: 0.65; }
+.fab-optimize.loading { animation: fab-pulse 1s ease-in-out infinite; }
+@keyframes fab-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(0.92); } }
+
+/* ===== Bandeja inferior deslizable ===== */
+.bottom-sheet {
+  position: fixed; left: 0; right: 0; top: 0; bottom: 0;
+  max-width: 640px; margin: 0 auto;
+  background: #fff; border-radius: 18px 18px 0 0;
+  box-shadow: 0 -2px 16px rgba(0,0,0,0.2);
+  z-index: 30; display: flex; flex-direction: column;
+  will-change: transform;
+}
+.sheet-handle-area { padding: 10px 16px 8px; cursor: grab; touch-action: none; flex-shrink: 0; }
+.sheet-handle { width: 40px; height: 5px; background: #ddd; border-radius: 3px; margin: 0 auto 10px; }
+.sheet-summary { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+.route-stats { color: var(--primary-dark); font-weight: 700; }
+
+.sheet-content {
+  flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 0 16px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+.sheet-content .progress-bar { height: 7px; background: #e8eaed; border-radius: 6px; overflow: hidden; margin-bottom: 14px; }
+.progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width .3s; }
+
+.sheet-content h2 { margin: 0 0 2px; font-size: 1.05rem; }
+.hint { color: var(--muted); font-size: 0.78rem; margin: 0 0 10px; }
+
+.stop-list { list-style: none; margin: 0; padding: 0; }
+.stop-item {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid #eee; border-radius: 12px; padding: 10px;
+  margin-bottom: 8px;
+}
+.stop-item.delivered { opacity: 0.6; background: #fafbfa; }
+.stop-item.delivered .stop-address { text-decoration: line-through; }
+.drag-handle { color: #bbb; padding: 8px 4px; cursor: grab; display: flex; align-items: center; touch-action: none; }
+.drag-handle .ic { width: 18px; height: 18px; }
+.stop-order { background: var(--primary); color: #fff; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0; }
+.stop-check { width: 24px; height: 24px; flex-shrink: 0; accent-color: var(--primary); }
+.stop-info { flex: 1; min-width: 0; }
+.stop-address { font-size: 0.95rem; line-height: 1.32; word-break: break-word; font-weight: 500; }
+.stop-sub { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+.stop-nav {
+  background: #e8f0fe; border: none; color: var(--primary);
+  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.stop-nav .ic { width: 18px; height: 18px; }
+.stop-nav:active { background: #d2e3fc; }
+.stop-del {
+  background: none; border: none; color: var(--danger); padding: 8px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.stop-del .ic { width: 16px; height: 16px; }
+.stop-del:active { opacity: 0.6; }
+
+.empty-msg { text-align: center; color: var(--muted); padding: 20px 4px; font-size: 0.9rem; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sheet-peek) + 90px);
+  transform: translate(-50%, 20px);
+  background: #222; color: #fff; padding: 10px 16px; border-radius: 30px;
+  font-size: 0.85rem; opacity: 0; pointer-events: none; transition: all .25s;
+  z-index: 60; max-width: 88%; text-align: center;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ===== Pines del mapa, estilo Google Maps ===== */
+.map-pin { position: relative; width: 30px; height: 40px; transform: translate(-50%, -100%); }
+.map-pin svg { width: 100%; height: 100%; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.35)); }
+.map-pin .pin-num {
+  position: absolute; top: 6px; left: 0; right: 0; text-align: center;
+  color: #fff; font-size: 12px; font-weight: bold;
+}
+.map-pin .pin-check {
+  position: absolute; top: 7px; left: 0; right: 0;
+  width: 14px !important; height: 14px !important;
+  margin: 0 auto; filter: none;
+}
+.map-pin.delivered > svg .pin-fill { fill: #8a9590; }
+.map-pin.start svg .pin-fill { fill: #e8a33d; }
+
+/* ===== Punto de ubicacion en vivo (estilo "estas aca" de Google Maps) ===== */
+.live-dot-wrap { position: relative; width: 18px; height: 18px; }
+.live-dot-pulse {
+  position: absolute; inset: -11px; border-radius: 50%;
+  background: rgba(26,115,232,0.35);
+  animation: live-dot-pulse 2s ease-out infinite;
+}
+.live-dot {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: var(--primary); border: 3px solid #fff;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.45);
+}
+@keyframes live-dot-pulse {
+  0% { transform: scale(0.35); opacity: 0.85; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+.live-distance {
+  display: block; flex-basis: 100%; font-size: 0.78rem; color: var(--primary); font-weight: 600;
+  margin-top: 2px;
+}
+
+/* ===== Opciones de ruta (elegir modo antes de arrancar el viaje) ===== */
+.route-options-list { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+.route-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 14px; border-radius: 12px; background: #f1f3f4;
+}
+.route-option-label { font-weight: 600; font-size: 0.95rem; }
+.route-option-stats { font-size: 0.82rem; color: #5f6368; margin-top: 2px; }
+.route-option .route-option-pick { padding: 8px 12px; font-size: 0.82rem; white-space: nowrap; }
+
+/* ===== Modo viaje: menos distracciones mientras se reparte ===== */
+body.trip-active .search-pill { display: none; }
+body.trip-active #optimizeBtn { display: none; }

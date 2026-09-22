@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Mi Ruta de Reparto</title>
+<meta name="theme-color" content="#1a73e8">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Set de iconos propios de la app (sprite, no depende de fuentes de emoji del telefono) -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+  <symbol id="ic-pin" viewBox="0 0 24 24"><path d="M12 21s-7-7.2-7-12a7 7 0 1114 0c0 4.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ic-more" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></symbol>
+  <symbol id="ic-clipboard" viewBox="0 0 24 24"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2.2" width="6" height="3.6" rx="1"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="15" y2="15"/></symbol>
+  <symbol id="ic-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></symbol>
+  <symbol id="ic-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><line x1="12" y1="1.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22.5" y2="12"/></symbol>
+  <symbol id="ic-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polygon points="12,4 15.5,12 12,20 8.5,12" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ic-close" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></symbol>
+  <symbol id="ic-handle" viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><polyline points="5 13 10 18 19 7"/></symbol>
+</svg>
+
+<div id="map" class="map-full"></div>
+
+<!-- Barra de busqueda flotante, estilo Google Maps -->
+<div class="top-bar">
+  <div class="top-bar-row">
+    <div class="search-pill">
+      <svg class="ic search-icon"><use href="#ic-search"/></svg>
+      <input id="searchInput" type="text" placeholder="Buscar dirección..." autocomplete="off">
+      <button id="useLocationBtn" class="icon-btn" title="Usar mi ubicación como punto de partida"><svg class="ic"><use href="#ic-pin"/></svg></button>
+    </div>
+    <button id="menuBtn" class="round-btn" title="Más opciones"><svg class="ic"><use href="#ic-more"/></svg></button>
+  </div>
+  <ul id="suggestions" class="suggestions"></ul>
+</div>
+
+<!-- Menu flotante -->
+<div id="menuPanel" class="menu-panel hidden">
+  <button id="pasteOpenBtn"><svg class="ic ic-inline"><use href="#ic-clipboard"/></svg> Pegar lista de direcciones</button>
+  <button id="removeStartBtn" class="hidden"><svg class="ic ic-inline"><use href="#ic-pin"/></svg> Quitar punto de partida</button>
+  <button id="stopLiveBtn" class="hidden"><svg class="ic ic-inline"><use href="#ic-target"/></svg> Dejar de seguir mi ubicación</button>
+  <button id="endTripBtn" class="hidden"><svg class="ic ic-inline"><use href="#ic-close"/></svg> Finalizar viaje</button>
+  <div class="menu-row">
+    <label for="modeSelect">Modo</label>
+    <select id="modeSelect">
+      <option value="foot" selected>🚶 A pie</option>
+      <option value="bike">🚲 Bici</option>
+    </select>
+  </div>
+  <button id="clearBtn" class="menu-danger"><svg class="ic ic-inline"><use href="#ic-trash"/></svg> Borrar todo</button>
+</div>
+<div id="menuBackdrop" class="menu-backdrop hidden"></div>
+
+<!-- Modal pegar lista -->
+<div id="pasteModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>Pegar lista de direcciones</h3>
+    <textarea id="pasteArea" rows="6" placeholder="Pegá una dirección por línea, por ejemplo:&#10;Av. Rivadavia 1234, Merlo&#10;Calle Falsa 123, Ituzaingó&#10;..."></textarea>
+    <div class="modal-actions">
+      <button id="pasteCancelBtn" class="ghost-btn">Cancelar</button>
+      <button id="pasteBtn" class="primary-btn">Cargar direcciones</button>
+    </div>
+    <div id="pasteStatus" class="status-text"></div>
+  </div>
+</div>
+
+<!-- Modal opciones de ruta: se muestra al optimizar, antes de arrancar el viaje -->
+<div id="routeOptionsModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>Elegí cómo vas a repartir</h3>
+    <div id="routeOptionsList" class="route-options-list"></div>
+    <div class="modal-actions">
+      <button id="routeOptionsCancelBtn" class="ghost-btn">Seguir editando</button>
+    </div>
+  </div>
+</div>
+
+<!-- Botones flotantes -->
+<button id="locateFab" class="fab fab-locate" title="Seguir mi ubicación en vivo"><svg class="ic"><use href="#ic-target"/></svg></button>
+<button id="optimizeBtn" class="fab fab-optimize" title="Optimizar ruta"><svg class="ic"><use href="#ic-compass"/></svg></button>
+
+<!-- Bandeja inferior deslizable -->
+<div id="bottomSheet" class="bottom-sheet">
+  <div id="sheetHandle" class="sheet-handle-area">
+    <div class="sheet-handle"></div>
+    <div class="sheet-summary">
+      <span id="progressText">0/0 entregados</span>
+      <span id="routeStats" class="route-stats"></span>
+      <span id="liveDistance" class="live-distance hidden"></span>
+    </div>
+  </div>
+  <div class="sheet-content">
+    <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    <h2>Paradas <span id="stopCount">(0)</span></h2>
+    <p class="hint">Mantené presionado el ícono de la izquierda para reordenar a mano.</p>
+    <ul id="stopList" class="stop-list"></ul>
+    <div id="emptyMsg" class="empty-msg">Todavía no cargaste ninguna dirección. Buscá una arriba o pegá una lista con el botón de más opciones.</div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
