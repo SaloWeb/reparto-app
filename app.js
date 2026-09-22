@@ -470,11 +470,11 @@ async function runOptimize() {
   roadRoute = null; saveRoute();
   saveStops(); render(); renderMap();
 
-  // Calcular la mejor ruta real por calle para los dos modos posibles
-  const [footCand, bikeCand] = await Promise.all([
-    computeCandidate('foot', pending, startPoint),
-    computeCandidate('bike', pending, startPoint)
-  ]);
+  // Se piden en secuencia (no Promise.all) porque el servidor publico de OSRM
+  // pide explicitamente max ~1 req/seg; en paralelo son 4 requests de golpe
+  // (matriz+ruta x 2 perfiles) y se corre riesgo de que empiece a tirar error.
+  const footCand = await computeCandidate('foot', pending, startPoint);
+  const bikeCand = await computeCandidate('bike', pending, startPoint);
   routeCandidates = [footCand, bikeCand].filter(Boolean);
 
   btn.disabled = false; btn.classList.remove('loading');
@@ -534,6 +534,7 @@ function startTrip() {
 function endTrip() {
   tripActive = false; saveTrip();
   document.body.classList.remove('trip-active');
+  stopLiveTracking(); // cortar el GPS al terminar, no tiene sentido seguir gastando bateria
   syncTripUI();
   closeMenu();
   showToast('Viaje finalizado');
@@ -815,7 +816,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   stops = []; startPoint = null; roadRoute = null;
   saveStops(); saveStart(); saveRoute(); render(); renderMap();
   setSheetState('peek');
-  if (tripActive) endTrip();
+  if (tripActive) endTrip(); else stopLiveTracking(); // por si el GPS estaba activo sin viaje iniciado
 });
 
 /* Reordenar a mano con SortableJS */

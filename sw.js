@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mi-ruta-v7';
+const CACHE_NAME = 'mi-ruta-v8';
 const SHELL_FILES = [
   './index.html',
   './style.css',
