@@ -40,6 +40,16 @@ html, body {
   background: #dfe3e0;
 }
 
+/* Los controles de Leaflet (zoom +/-) viven dentro de #map, que tiene z-index:1.
+   Aunque internamente Leaflet les pone z-index:1000, eso solo cuenta adentro del
+   contexto de apilamiento de #map: contra la barra de busqueda de arriba (z-index:40,
+   pero en su propio contexto fuera de #map) siempre pierden y quedan tapados.
+   Solucion: correr el control de zoom hacia abajo, por debajo de toda la barra
+   superior, asi no compite con ella en ningun punto de la pantalla. */
+.leaflet-top.leaflet-left {
+  top: calc(env(safe-area-inset-top, 0px) + 82px) !important;
+}
+
 /* ===== Barra de busqueda flotante ===== */
 .top-bar {
   position: fixed;

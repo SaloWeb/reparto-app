@@ -55,8 +55,10 @@ function haversine(a, b) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /* ===== Geocoding (Nominatim / OpenStreetMap, gratis, sin API key) ===== */
+// countrycodes=ar restringe los resultados a Argentina (evita que aparezcan
+// direcciones homonimas de Italia, Espana, etc. al buscar calles comunes).
 async function geocode(query) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ar&q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
   const data = await res.json();
   if (!data.length) return null;
@@ -64,7 +66,7 @@ async function geocode(query) {
 }
 
 async function searchSuggestions(query) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`;
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=ar&q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
   return res.json();
 }
@@ -134,23 +136,36 @@ async function fetchRouteGeometry(points, profile) {
    distFn(i, j) recibe indices sobre "points" y devuelve una distancia.
    points[0] es el origen si hay uno (startPoint); si no, points[0] es la 1ra parada. */
 function nearestNeighborOrder(n, hasOrigin, distFn) {
-  const visited = new Array(n).fill(false);
-  const order = [];
-
   const stopOffset = hasOrigin ? 1 : 0; // indice 0 en points es el origen si hasOrigin
   const stopCount = n - stopOffset;
+  const visited = new Array(stopCount).fill(false);
+  const order = [];
+  let fromReal;
 
-  for (let k = 0; k < stopCount; k++) {
+  if (hasOrigin) {
+    fromReal = 0; // arrancamos desde el punto de partida real
+  } else {
+    // Sin punto de partida no hay una referencia natural para el primer paso:
+    // fijamos la primera parada de la lista como ancla y encadenamos el resto
+    // por vecino mas cercano desde ahi (antes esto comparaba cada candidato
+    // contra si mismo en la primera vuelta, dando distancia 0 siempre y un
+    // orden inicial practicamente al azar).
+    order.push(0);
+    visited[0] = true;
+    fromReal = stopOffset;
+  }
+
+  for (let k = order.length; k < stopCount; k++) {
     let best = -1, bestD = Infinity;
     for (let i = 0; i < stopCount; i++) {
       if (visited[i]) continue;
       const realIdx = i + stopOffset;
-      const from = hasOrigin ? 0 : (order.length ? order[order.length - 1] + stopOffset : realIdx);
-      const d = distFn(from, realIdx);
+      const d = distFn(fromReal, realIdx);
       if (d < bestD) { bestD = d; best = i; }
     }
     visited[best] = true;
     order.push(best);
+    fromReal = best + stopOffset;
   }
   return order; // indices relativos a la lista de paradas (0-based, sin offset)
 }
@@ -185,6 +200,52 @@ function twoOpt(order, hasOrigin, distFn) {
   return order;
 }
 
+/* Or-opt: prueba a reubicar tramos cortos (de 1, 2 o 3 paradas seguidas) en otro
+   punto de la ruta. El 2-opt solo invierte segmentos y no puede arreglar una
+   parada que quedo "de paso" lejos de donde deberia estar en la secuencia;
+   Or-opt cubre justo ese caso y en la practica saca bastante mas kilometraje
+   muerto que 2-opt solo, sobre todo con 15-30 paradas. */
+function orOpt(order, hasOrigin, distFn) {
+  const stopOffset = hasOrigin ? 1 : 0;
+  function routeLength(ord) {
+    let total = 0;
+    let prevReal = hasOrigin ? 0 : (ord[0] + stopOffset);
+    const seq = hasOrigin ? ord : ord.slice(1);
+    for (const idx of seq) {
+      const real = idx + stopOffset;
+      total += distFn(prevReal, real);
+      prevReal = real;
+    }
+    return total;
+  }
+  const n = order.length;
+  let improved = true, guard = 0;
+  while (improved && guard < 60) {
+    improved = false; guard++;
+    for (let segLen = 1; segLen <= 3; segLen++) {
+      if (segLen >= n) continue;
+      for (let i = 0; i + segLen <= n; i++) {
+        const segment = order.slice(i, i + segLen);
+        const rest = order.slice(0, i).concat(order.slice(i + segLen));
+        const baseLen = routeLength(order);
+        for (let j = 0; j <= rest.length; j++) {
+          const candidate = rest.slice(0, j).concat(segment, rest.slice(j));
+          // Si el candidato es identico al original (el tramo volvio a su lugar), saltear.
+          if (candidate.every((v, idx2) => v === order[idx2])) continue;
+          if (routeLength(candidate) < baseLen - 1e-6) {
+            order.splice(0, order.length, ...candidate);
+            improved = true;
+            break;
+          }
+        }
+        if (improved) break;
+      }
+      if (improved) break;
+    }
+  }
+  return order;
+}
+
 function optimizeOrder(list, origin, matrix) {
   if (list.length < 2) return list.slice();
   const hasOrigin = !!origin;
@@ -197,6 +258,8 @@ function optimizeOrder(list, origin, matrix) {
 
   let order = nearestNeighborOrder(n, hasOrigin, distFn);
   order = twoOpt(order, hasOrigin, distFn);
+  order = orOpt(order, hasOrigin, distFn);
+  order = twoOpt(order, hasOrigin, distFn); // el Or-opt puede abrir nuevas mejoras de cruce, repasar
   return order.map(i => list[i]);
 }
 
@@ -689,7 +752,17 @@ function stopLiveTracking() {
   updateLiveDistance();
 }
 
-document.getElementById('locateFab').addEventListener('click', startLiveTracking);
+// El FAB de ubicacion ahora es un toggle: si ya se esta siguiendo la posicion,
+// tocarlo de nuevo la corta (sin tener que abrir el menu de arriba). El item
+// del menu sigue existiendo como acceso alternativo.
+document.getElementById('locateFab').addEventListener('click', () => {
+  if (watchId != null) {
+    stopLiveTracking();
+    showToast('Dejaste de seguir tu ubicación');
+  } else {
+    startLiveTracking();
+  }
+});
 document.getElementById('stopLiveBtn').addEventListener('click', () => {
   stopLiveTracking(); closeMenu(); showToast('Dejaste de seguir tu ubicación');
 });
