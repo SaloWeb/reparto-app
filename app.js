@@ -482,7 +482,12 @@ async function computeCandidate(profile, pending, origin) {
   let ordered = optimizeOrder(pending, origin, null); // paso rapido offline
   const points = origin ? [origin, ...ordered] : ordered;
   const matrix = await fetchMatrix(points, profile);
-  if (matrix) ordered = optimizeOrder(pending, origin, matrix); // mejora con distancias reales
+  // IMPORTANTE: la matriz que devuelve OSRM tiene sus filas/columnas en el mismo
+  // orden en que se mandaron los puntos (points, basado en "ordered"). Por eso acá
+  // hay que volver a optimizar sobre "ordered" y no sobre "pending" (el orden
+  // original sin optimizar) -- si no, cada distancia de la matriz queda asignada
+  // al par de paradas equivocado y el resultado puede terminar peor, no mejor.
+  if (matrix) ordered = optimizeOrder(ordered, origin, matrix); // mejora con distancias reales
   const routePoints = origin ? [origin, ...ordered] : ordered;
   const geo = await fetchRouteGeometry(routePoints, profile);
   if (!geo) return null;
