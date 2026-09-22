@@ -16,7 +16,9 @@ let liveAccuracyCircle = null;
 let lastLivePos = null;
 let notifiedStopId = null;    // id de la parada para la que ya avisamos "estas llegando"
 let currentNextStopId = null; // id de la proxima parada pendiente (para detectar cambios)
-const PROXIMITY_M = 40;       // metros para avisar "estas llegando"
+// Radio de aviso de "estas llegando": mas grande en bici porque se cubre mas distancia
+// entre cada lectura de GPS, asi el aviso llega con tiempo de frenar/doblar a tiempo.
+function proximityRadiusM() { return mode === 'bike' ? 80 : 40; }
 
 /* ===== Viaje (planificar vs. en ruta) ===== */
 const TRIP_KEY = 'reparto-app-trip-v1';
@@ -629,7 +631,7 @@ function checkProximity() {
   }
   if (!lastLivePos || notifiedStopId === next.id) return;
   const meters = haversine(lastLivePos, next) * 1000;
-  if (meters <= PROXIMITY_M) {
+  if (meters <= proximityRadiusM()) {
     notifiedStopId = next.id;
     showToast('📍 Estás llegando a: ' + next.address, 4500);
     if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
