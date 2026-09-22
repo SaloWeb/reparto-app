@@ -54,6 +54,15 @@ function haversine(a, b) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Si ya existe una parada a menos de ~15 metros, probablemente sea la misma
+// direccion cargada dos veces (por error de tipeo o copiar y pegar la lista
+// repetida). No bloqueamos la carga -- puede ser realmente dos paquetes en el
+// mismo edificio -- pero avisamos para que el repartidor lo pueda revisar.
+function findNearbyStop(lat, lon) {
+  const THRESHOLD_KM = 0.015;
+  return stops.find(s => haversine(s, { lat, lon }) < THRESHOLD_KM);
+}
+
 /* ===== Geocoding (Nominatim / OpenStreetMap, gratis, sin API key) ===== */
 // countrycodes=ar restringe los resultados a Argentina (evita que aparezcan
 // direcciones homonimas de Italia, Espana, etc. al buscar calles comunes).
@@ -317,23 +326,46 @@ function render() {
    de agua "API KEY REQUIRED" encima. La key se pide gratis y sin cuenta en
    https://carto.com/basemaps/apikey/ (te la mandan por mail al toque). Si la conseguis,
    pegala aca abajo y la app vuelve a usar el estilo Voyager sin marca de agua.
-   Mientras tanto, usamos OpenStreetMap estandar, que es gratis y no pide key. */
+   Mientras tanto, usamos OpenStreetMap estandar, que es gratis y no pide key.
+
+   OJO: como esta key vive en el codigo (no hay forma de esconderla del todo en una app
+   100% cliente, sin servidor propio), queda visible para cualquiera que mire el repo. Si
+   alguien la usa de mas y CARTO la frena, el mapa se rompe con la marca de agua para todo
+   el mundo. Por eso hay un fallback automatico mas abajo: si los tiles de CARTO empiezan
+   a fallar, la app pasa sola al mapa estandar de OpenStreetMap sin que haya que hacer nada. */
 const CARTO_API_KEY = 'cb1_3t00_1_1cb6019582a4a6aac157289f'; // pegar aca la key si se consigue una
+
+function osmStandardLayer() {
+  return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    subdomains: 'abc',
+    attribution: '&copy; OpenStreetMap contributors'
+  });
+}
 
 function initMap() {
   map = L.map('map', { zoomControl: true }).setView([-34.66, -58.73], 13);
   if (CARTO_API_KEY) {
-    L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`, {
+    const cartoLayer = L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`, {
       maxZoom: 20,
       subdomains: 'abcd',
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-    }).addTo(map);
+    });
+    // Si varios tiles seguidos fallan (key vencida o limite superado por uso ajeno,
+    // ya que la key es publica), pasamos solos al mapa estandar en vez de dejar
+    // el mapa roto o con marca de agua.
+    let tileErrors = 0, switched = false;
+    cartoLayer.on('tileerror', () => {
+      tileErrors++;
+      if (tileErrors >= 6 && !switched) {
+        switched = true;
+        map.removeLayer(cartoLayer);
+        osmStandardLayer().addTo(map);
+      }
+    });
+    cartoLayer.addTo(map);
   } else {
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      subdomains: 'abc',
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    osmStandardLayer().addTo(map);
   }
   markersLayer = L.layerGroup().addTo(map);
   routeLayer = L.layerGroup().addTo(map);
@@ -435,10 +467,12 @@ async function addAddress(address, coords) {
     point = await geocode(address);
     if (!point) throw new Error('No se encontro: ' + address);
   }
+  const isDup = !!findNearbyStop(point.lat, point.lon);
   const wasEmpty = stops.length === 0;
   stops.push({ id: uid(), address, lat: point.lat, lon: point.lon, delivered: false });
   saveStops();
   if (wasEmpty) setSheetState('half');
+  return { isDup };
 }
 
 /* ===== Optimizar: paso rapido offline + calcular opciones de ruta real por calle =====
@@ -649,10 +683,10 @@ searchInput.addEventListener('input', () => {
         li.textContent = r.display_name;
         li.addEventListener('click', async () => {
           try {
-            await addAddress(r.display_name, { lat: parseFloat(r.lat), lon: parseFloat(r.lon) });
+            const { isDup } = await addAddress(r.display_name, { lat: parseFloat(r.lat), lon: parseFloat(r.lon) });
             searchInput.value = ''; suggEl.innerHTML = '';
             roadRoute = null; saveRoute(); render(); renderMap();
-            showToast('Dirección agregada');
+            showToast(isDup ? 'Agregada (hay otra muy cerca, revisá que no esté repetida)' : 'Dirección agregada');
           } catch (e) {
             showToast('No se pudo agregar la dirección, probá de nuevo');
           }
@@ -787,20 +821,20 @@ document.getElementById('pasteBtn').addEventListener('click', async () => {
   const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) return;
   const statusEl = document.getElementById('pasteStatus');
-  let ok = 0, fail = 0;
+  let ok = 0, fail = 0, dup = 0;
   for (let i = 0; i < lines.length; i++) {
     statusEl.textContent = `Cargando ${i + 1}/${lines.length}...`;
     try {
-      await addAddress(lines[i]);
-      ok++;
+      const { isDup } = await addAddress(lines[i]);
+      ok++; if (isDup) dup++;
     } catch (e) { fail++; }
     roadRoute = null; saveRoute(); render(); renderMap();
     if (i < lines.length - 1) await sleep(1100); // respetar limite de Nominatim (1 req/seg)
   }
-  statusEl.textContent = `Listo: ${ok} agregadas, ${fail} no encontradas.`;
+  statusEl.textContent = `Listo: ${ok} agregadas${dup ? ` (${dup} muy cerca de otra ya cargada, revisalas)` : ''}, ${fail} no encontradas.`;
   document.getElementById('pasteArea').value = '';
   if (ok > 0) {
-    setTimeout(() => { pasteModal.classList.add('hidden'); statusEl.textContent = ''; }, 1400);
+    setTimeout(() => { pasteModal.classList.add('hidden'); statusEl.textContent = ''; }, 1800);
   }
 });
 

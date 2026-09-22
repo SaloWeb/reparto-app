@@ -11,8 +11,9 @@ como si fuera una app normal.
   todas (con una pequeña espera entre cada una para respetar el límite
   del servicio gratuito de geocoding).
 - **Optimizar ruta**: reordena las paradas pendientes con el camino más
-  corto en línea recta (vecino más cercano + mejora 2-opt), ideal para
-  a pie o bici donde no importan sentidos de calles.
+  corto (vecino más cercano + mejoras 2-opt y Or-opt, y después se refina
+  con distancias reales por calle), ideal para a pie o bici donde no
+  importan sentidos de calles.
 - El botón 📍 usa tu ubicación actual como punto de partida.
 - Tocás el checkbox de cada parada a medida que entregás el paquete.
 - Se puede reordenar a mano arrastrando desde el ☰.
