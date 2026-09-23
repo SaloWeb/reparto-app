@@ -450,6 +450,9 @@ textarea#pasteArea:focus { outline: none; border-color: var(--primary); }
 body.trip-active .search-pill { display: none; }
 body.trip-active #optimizeBtn { display: none; }
 
+/* ===== Marcar un punto en el mapa a mano ===== */
+body.picking-point .map-full { cursor: crosshair; }
+
 /* ===== Scrollbars discretas (donde el navegador lo soporta) ===== */
 .suggestions::-webkit-scrollbar, .sheet-content::-webkit-scrollbar { width: 6px; }
 .suggestions::-webkit-scrollbar-thumb, .sheet-content::-webkit-scrollbar-thumb {

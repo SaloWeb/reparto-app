@@ -64,20 +64,50 @@ function findNearbyStop(lat, lon) {
 }
 
 /* ===== Geocoding (Nominatim / OpenStreetMap, gratis, sin API key) ===== */
-// countrycodes=ar restringe los resultados a Argentina (evita que aparezcan
-// direcciones homonimas de Italia, Espana, etc. al buscar calles comunes).
-async function geocode(query) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ar&q=${encodeURIComponent(query)}`;
+// Bounding box que cubre CABA + Gran Buenos Aires (partidos del conurbano).
+// Se usa para restringir la busqueda a esta zona: evita que aparezcan
+// direcciones homonimas de otras provincias (p.ej. "San Martin 100" existe en
+// decenas de ciudades del pais) y mejora la precision al elegir el resultado.
+// Si tu amigo tambien reparte mas lejos (La Plata, Zarate/Campana, etc.) hay
+// que agrandar este rectangulo.
+const BA_VIEWBOX = '-58.90,-34.30,-58.15,-35.05'; // left,top,right,bottom (lon,lat,lon,lat)
+
+// countrycodes=ar restringe a Argentina y viewbox+bounded=1 restringe encima a
+// Buenos Aires. Si esa busqueda estricta no encuentra nada, reintentamos sin
+// "bounded" (mismo pais, mismo area como preferencia pero no como limite duro):
+// mejor mostrar un resultado -aunque este justo afuera del rectangulo o mal
+// ubicado en OSM- que dejar al repartidor sin nada cuando escribe bien la
+// direccion y esta existe.
+async function nominatimSearch(query, limit, bounded) {
+  const boundParam = bounded ? '&bounded=1' : '';
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=${limit}&countrycodes=ar&viewbox=${BA_VIEWBOX}${boundParam}&q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
-  const data = await res.json();
+  return res.json();
+}
+
+async function geocode(query) {
+  let data = await nominatimSearch(query, 1, true);
+  if (!data.length) data = await nominatimSearch(query, 1, false);
   if (!data.length) return null;
   return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), display_name: data[0].display_name };
 }
 
 async function searchSuggestions(query) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=ar&q=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
-  return res.json();
+  let data = await nominatimSearch(query, 8, true);
+  if (!data.length) data = await nominatimSearch(query, 8, false);
+  return data;
+}
+
+// Reverse geocoding: a partir de coordenadas, intenta conseguir una direccion
+// legible (se usa para la funcion de marcar un punto en el mapa a mano).
+async function reverseGeocode(lat, lon) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18`;
+    const data = await fetchJsonWithTimeout(url, 6000);
+    return data && data.display_name ? data.display_name : null;
+  } catch (e) {
+    return null;
+  }
 }
 
 /* ===== Ruteo real por calle (OSRM publico, gratis, sin API key) =====
@@ -369,6 +399,7 @@ function initMap() {
   }
   markersLayer = L.layerGroup().addTo(map);
   routeLayer = L.layerGroup().addTo(map);
+  map.on('click', onMapClickForPick);
 }
 
 function pinIcon(number, kind) {
@@ -458,6 +489,44 @@ function updateStatsUI(route) {
   const km = route.distanceKm.toFixed(1);
   const min = Math.round(route.durationMin);
   el.textContent = `${km} km · ~${min} min`;
+}
+
+/* ===== Marcar un punto en el mapa a mano =====
+   Para cuando Nominatim no encuentra la direccion (esta mal cargada en OSM,
+   es un lugar sin numeracion tipo un puesto ambulante o una obra), se puede
+   tocar el mapa donde esta y se agrega como parada mas. Intentamos ponerle
+   una direccion legible con reverse geocoding; si no hay conexion o no
+   encuentra nada, queda igual con las coordenadas como nombre. */
+let pickingPoint = false;
+
+function startPickPoint() {
+  pickingPoint = true;
+  document.body.classList.add('picking-point');
+  showToast('Tocá el mapa donde querés agregar la parada', 4000);
+}
+
+function stopPickPoint() {
+  pickingPoint = false;
+  document.body.classList.remove('picking-point');
+}
+
+function onMapClickForPick(e) {
+  if (!pickingPoint) return;
+  stopPickPoint();
+  addPickedPoint(e.latlng.lat, e.latlng.lng);
+}
+
+async function addPickedPoint(lat, lon) {
+  showToast('Agregando punto...', 1500);
+  const name = await reverseGeocode(lat, lon);
+  const address = name || `Punto en el mapa (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+  try {
+    const { isDup } = await addAddress(address, { lat, lon });
+    roadRoute = null; saveRoute(); render(); renderMap();
+    showToast(isDup ? 'Agregado (hay otra parada muy cerca, revisá)' : 'Punto agregado como parada');
+  } catch (e) {
+    showToast('No se pudo agregar el punto');
+  }
 }
 
 /* ===== Agregar direcciones ===== */
@@ -660,6 +729,18 @@ document.getElementById('pasteOpenBtn').addEventListener('click', () => {
   closeMenu();
   pasteModal.classList.remove('hidden');
 });
+
+// Boton del menu: activa el modo "tocar el mapa para agregar parada". Si se
+// lo vuelve a tocar mientras ya esta activo, cancela en vez de arrancar de nuevo.
+document.getElementById('pickPointBtn').addEventListener('click', () => {
+  closeMenu();
+  if (pickingPoint) {
+    stopPickPoint();
+    showToast('Cancelado');
+  } else {
+    startPickPoint();
+  }
+});
 document.getElementById('pasteCancelBtn').addEventListener('click', () => {
   pasteModal.classList.add('hidden');
 });
@@ -678,7 +759,7 @@ searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);
   const q = searchInput.value.trim();
   suggEl.innerHTML = '';
-  if (q.length < 4) return;
+  if (q.length < 3) return;
   searchTimer = setTimeout(async () => {
     try {
       const results = await searchSuggestions(q);
