@@ -174,6 +174,24 @@ button { cursor: pointer; }
 }
 .suggestions li:active { background: var(--primary-light); }
 .suggestions li + li { border-top: 1px solid var(--border); }
+.suggestions li.suggestions-loading,
+.suggestions li.suggestions-empty { align-items: center; color: var(--muted); }
+.suggestions li.suggestions-loading::before,
+.suggestions li.suggestions-empty::before { content: none; }
+.spinner-sm {
+  width: 15px; height: 15px; flex-shrink: 0;
+  border: 2px solid var(--border); border-top-color: var(--primary);
+  border-radius: 50%; animation: fab-spin .7s linear infinite;
+}
+
+/* Boton "x" para limpiar el buscador rapido */
+.search-clear {
+  border: none; background: transparent; padding: 8px; flex-shrink: 0;
+  color: var(--muted-light); display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.search-clear .ic { width: 16px; height: 16px; }
+.search-clear:active { background: var(--bg); color: var(--muted); }
 
 @keyframes dropIn {
   from { opacity: 0; transform: translateY(-6px); }
@@ -273,12 +291,18 @@ textarea#pasteArea:focus { outline: none; border-color: var(--primary); }
   position: fixed; right: 16px; border: none; border-radius: 50%;
   box-shadow: var(--shadow-3);
   display: flex; align-items: center; justify-content: center;
-  z-index: 35; cursor: pointer; transition: transform .12s var(--ease), box-shadow var(--fast) var(--ease);
+  z-index: 35; cursor: pointer;
+  /* bottom acompaña a la bandeja: los FAB suben/bajan con ella en vez de quedar tapando la lista */
+  transition: transform .12s var(--ease), box-shadow var(--fast) var(--ease),
+              bottom .28s cubic-bezier(.4,0,.2,1), opacity .2s var(--ease);
 }
+body.sheet-dragging .fab { transition: transform .12s var(--ease), box-shadow var(--fast) var(--ease), opacity .2s var(--ease); }
+/* Con la bandeja muy arriba (casi pantalla completa) los FAB se ocultan, como en Google Maps */
+body.sheet-high .fab { opacity: 0; pointer-events: none; }
 .fab:active { transform: scale(0.92); }
 .fab-locate {
   width: 46px; height: 46px; background: #fff; color: var(--primary);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sheet-peek) + 76px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--fab-offset, var(--sheet-peek)) + 76px);
 }
 .fab-locate .ic { width: 22px; height: 22px; }
 .fab-locate.active { background: var(--primary); color: #fff; }
@@ -286,10 +310,10 @@ textarea#pasteArea:focus { outline: none; border-color: var(--primary); }
   width: 60px; height: 60px;
   background: linear-gradient(155deg, var(--primary), var(--primary-dark));
   color: #fff;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sheet-peek) + 14px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--fab-offset, var(--sheet-peek)) + 14px);
 }
 .fab-optimize .ic { width: 28px; height: 28px; }
-.fab-optimize:disabled { opacity: 0.7; }
+.fab-optimize:disabled { opacity: 0.4; filter: grayscale(0.4); cursor: not-allowed; box-shadow: none; }
 .fab-optimize.loading { animation: fab-pulse 1.1s ease-in-out infinite; }
 .fab-optimize.loading .ic { opacity: 0; }
 .fab-optimize.loading::after {
@@ -353,7 +377,22 @@ textarea#pasteArea:focus { outline: none; border-color: var(--primary); }
   flex-shrink: 0; box-shadow: 0 1px 4px rgba(26, 115, 232, 0.4);
 }
 .stop-item.delivered .stop-order { background: var(--muted-light); box-shadow: none; }
-.stop-check { width: 24px; height: 24px; flex-shrink: 0; accent-color: var(--primary); }
+.stop-check {
+  appearance: none; -webkit-appearance: none;
+  width: 26px; height: 26px; flex-shrink: 0;
+  border: 2px solid var(--border); border-radius: 50%;
+  background: #fff; position: relative; cursor: pointer;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease), transform var(--fast) var(--ease);
+}
+.stop-check:active { transform: scale(0.88); }
+.stop-check:checked { background: var(--success); border-color: var(--success); }
+.stop-check:checked::after {
+  content: '';
+  position: absolute; left: 8px; top: 4px;
+  width: 6px; height: 11px;
+  border: solid #fff; border-width: 0 2px 2px 0;
+  transform: rotate(40deg);
+}
 .stop-info { flex: 1; min-width: 0; }
 .stop-address { font-size: 0.95rem; line-height: 1.32; word-break: break-word; font-weight: 500; }
 .stop-sub { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
@@ -386,15 +425,25 @@ textarea#pasteArea:focus { outline: none; border-color: var(--primary); }
 }
 
 .toast {
-  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sheet-peek) + 90px);
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + min(var(--fab-offset, var(--sheet-peek)), 50vh) + 90px);
   transform: translate(-50%, 20px);
   background: #24282b; color: #fff; padding: 11px 18px; border-radius: var(--radius-full);
   font-size: 0.85rem; font-weight: 500; opacity: 0; pointer-events: none;
   transition: opacity var(--normal) var(--ease), transform var(--normal) var(--ease);
   box-shadow: var(--shadow-3);
   z-index: 60; max-width: 88%; text-align: center;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
 }
-.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.toast:has(.toast-undo) { justify-content: space-between; text-align: left; padding-left: 18px; }
+.toast-msg { min-width: 0; }
+.toast-undo {
+  background: rgba(255, 255, 255, 0.14); border: none; color: #8ab4ff;
+  font-weight: 700; font-size: 0.82rem; padding: 7px 12px; flex-shrink: 0;
+  border-radius: var(--radius-full); white-space: nowrap;
+  transition: background var(--fast) var(--ease);
+}
+.toast-undo:active { background: rgba(255, 255, 255, 0.3); }
 
 /* ===== Pines del mapa, estilo Google Maps ===== */
 .map-pin { position: relative; width: 30px; height: 40px; transform: translate(-50%, -100%); }
@@ -436,15 +485,33 @@ textarea#pasteArea:focus { outline: none; border-color: var(--primary); }
 /* ===== Opciones de ruta (elegir modo antes de arrancar el viaje) ===== */
 .route-options-list { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
 .route-option {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  display: flex; align-items: center; gap: 12px;
   padding: 14px; border-radius: var(--radius); background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border); border-left: 4px solid var(--border);
   transition: border-color var(--fast) var(--ease);
 }
 .route-option:active { border-color: var(--primary); }
+.route-option.mode-foot { border-left-color: var(--primary); }
+.route-option.mode-bike { border-left-color: var(--accent); }
+.route-option-icon {
+  width: 40px; height: 40px; border-radius: 50%; background: #fff; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+  box-shadow: 0 1px 4px rgba(20, 30, 28, 0.12);
+}
+.route-option-info { flex: 1; min-width: 0; }
 .route-option-label { font-weight: 600; font-size: 0.98rem; }
 .route-option-stats { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
-.route-option .route-option-pick { padding: 9px 14px; font-size: 0.82rem; white-space: nowrap; box-shadow: none; }
+.route-option .route-option-pick { padding: 9px 14px; font-size: 0.82rem; white-space: nowrap; box-shadow: none; flex-shrink: 0; }
+
+/* Linea de vista previa (recta, sin optimizar por calle todavia): color distinto
+   de la ruta final calculada (azul) y con animacion de "hormigas" para que quede
+   claro de un vistazo que es un estimado, no la ruta real por calle. */
+.preview-route-line {
+  stroke-dasharray: 9 9;
+  animation: preview-dash 1s linear infinite;
+}
+@keyframes preview-dash { to { stroke-dashoffset: -18; } }
+.route-stats.preview { color: var(--muted); font-weight: 600; }
 
 /* ===== Modo viaje: menos distracciones mientras se reparte ===== */
 body.trip-active .search-pill { display: none; }
@@ -458,3 +525,6 @@ body.picking-point .map-full { cursor: crosshair; }
 .suggestions::-webkit-scrollbar-thumb, .sheet-content::-webkit-scrollbar-thumb {
   background: var(--border); border-radius: var(--radius-full);
 }
+
+/* que "~149 min" no se corte en dos lineas en las tarjetas de modo */
+.route-option-stats span { white-space: nowrap; }

@@ -35,9 +35,20 @@ function saveStart() { localStorage.setItem(START_KEY, JSON.stringify(startPoint
 function saveMode() { localStorage.setItem(MODE_KEY, mode); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
-function showToast(msg, ms = 3000) {
+// action opcional: { label, onClick } — agrega un boton "Deshacer" (o el label que sea)
+// dentro del toast, para poder revertir acciones rapidas (como borrar una parada) sin
+// tener que confirmar cada vez con un dialogo que frena el flujo de carga.
+function showToast(msg, ms = 3000, action = null) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
+  if (action) {
+    t.innerHTML = '<span class="toast-msg"></span><button class="toast-undo"></button>';
+    t.querySelector('.toast-msg').textContent = msg;
+    const btn = t.querySelector('.toast-undo');
+    btn.textContent = action.label;
+    btn.onclick = () => { t.classList.remove('show'); action.onClick(); };
+  } else {
+    t.textContent = msg;
+  }
   t.classList.add('show');
   clearTimeout(showToast._t);
   showToast._t = setTimeout(() => t.classList.remove('show'), ms);
@@ -337,16 +348,33 @@ function render() {
       saveStops(); render(); renderMap();
     });
     li.querySelector('.stop-del').addEventListener('click', () => {
+      const removedIdx = stops.findIndex(x => x.id === s.id);
+      const removed = stops[removedIdx];
       stops = stops.filter(x => x.id !== s.id);
       saveStops(); render(); renderMap();
+      showToast('Parada quitada', 4000, {
+        label: 'Deshacer',
+        onClick: () => {
+          stops.splice(removedIdx, 0, removed);
+          saveStops(); render(); renderMap();
+        }
+      });
     });
     listEl.appendChild(li);
   });
 
   const delivered = stops.filter(s => s.delivered).length;
   const total = stops.length;
-  document.getElementById('progressText').textContent = `${delivered}/${total} entregados`;
+  document.getElementById('progressText').textContent = total ? `${delivered}/${total} entregados` : 'Sin paradas cargadas';
   document.getElementById('progressFill').style.width = total ? `${(delivered / total) * 100}%` : '0%';
+
+  const pendingCount = stops.filter(s => !s.delivered).length;
+  const optimizeBtn = document.getElementById('optimizeBtn');
+  optimizeBtn.disabled = pendingCount < 2;
+  optimizeBtn.title = pendingCount < 2 ? 'Cargá al menos 2 direcciones para optimizar' : 'Optimizar ruta';
+
+  document.querySelector('.hint').style.display = total ? 'block' : 'none';
+
   updateLiveDistance();
 }
 
@@ -467,7 +495,12 @@ function renderMap() {
     const straight = [];
     if (startPoint) straight.push([startPoint.lat, startPoint.lon]);
     stops.forEach(s => straight.push([s.lat, s.lon]));
-    L.polyline(straight, { color: '#5f6368', weight: 3, opacity: 0.55, dashArray: '6 8' }).addTo(routeLayer);
+    // Vista previa: naranja (no azul, ese color queda reservado para la ruta real por
+    // calle) y con animacion de guiones en movimiento para que se note de un vistazo
+    // que esto es un estimado en linea recta, todavia no la ruta que se va a caminar.
+    L.polyline(straight, { color: '#e8a33d', weight: 3, opacity: 0.75, className: 'preview-route-line' }).addTo(routeLayer);
+    // Con un solo punto (sin partida) no hay tramo que medir: no mostrar "0.0 km"
+    if (straight.length >= 2) updatePreviewStatsUI(straightLineDistanceKm(stops, startPoint));
   }
 
   // Reencuadre inteligente: si estamos siguiendo la ubicacion en vivo, no tiene sentido
@@ -476,19 +509,51 @@ function renderMap() {
   const nextPending = stops.find(s => !s.delivered);
   if (following && lastLivePos && nextPending) {
     map.fitBounds(L.latLngBounds([[lastLivePos.lat, lastLivePos.lon], [nextPending.lat, nextPending.lon]]), {
-      padding: [70, 90], maxZoom: 17
+      paddingTopLeft: [70, 90], paddingBottomRight: [70, sheetCoverPx() + 30], maxZoom: 17
     });
   } else if (bounds.length) {
-    map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40] });
+    // Dejar libre el hueco de arriba (buscador) y el de abajo (bandeja de paradas) para que
+    // la vista previa de la ruta no quede tapada por la interfaz.
+    map.fitBounds(L.latLngBounds(bounds), {
+      paddingTopLeft: [40, 90], paddingBottomRight: [40, sheetCoverPx() + 30], maxZoom: 17
+    });
   }
+}
+
+// Cuanto de la pantalla (en px, desde abajo) tapa la bandeja ahora mismo.
+function sheetCoverPx() {
+  const el = document.getElementById('bottomSheet');
+  const vh = window.innerHeight;
+  if (!el) return 116;
+  // data-cover lo fija setSheetState con el destino de la animacion (getBoundingClientRect
+  // daria un valor intermedio si la bandeja todavia se esta moviendo)
+  const covered = el.dataset.cover ? parseFloat(el.dataset.cover) : vh - el.getBoundingClientRect().top;
+  return Math.max(116, Math.min(covered, vh * 0.55));
 }
 
 function updateStatsUI(route) {
   const el = document.getElementById('routeStats');
+  el.classList.remove('preview');
   if (!route) { el.textContent = ''; return; }
   const km = route.distanceKm.toFixed(1);
   const min = Math.round(route.durationMin);
   el.textContent = `${km} km · ~${min} min`;
+}
+
+// Distancia en linea recta (sin calles) de la vista previa, mientras todavia no se
+// calculo la ruta real por calle con OSRM. Es solo una referencia aproximada asi el
+// repartidor tiene algun numero mientras carga direcciones, antes de tocar "Optimizar".
+function straightLineDistanceKm(list, origin) {
+  const points = origin ? [origin, ...list] : list;
+  let total = 0;
+  for (let i = 1; i < points.length; i++) total += haversine(points[i - 1], points[i]);
+  return total;
+}
+
+function updatePreviewStatsUI(km) {
+  const el = document.getElementById('routeStats');
+  el.textContent = `~${km.toFixed(1)} km en línea recta (aprox.)`;
+  el.classList.add('preview');
 }
 
 /* ===== Marcar un punto en el mapa a mano =====
@@ -598,13 +663,15 @@ function showRouteOptions() {
   const list = document.getElementById('routeOptionsList');
   list.innerHTML = '';
   routeCandidates.forEach(c => {
-    const label = c.mode === 'bike' ? '🚲 En bici' : '🚶 A pie';
+    const icon = c.mode === 'bike' ? '🚲' : '🚶';
+    const label = c.mode === 'bike' ? 'En bici' : 'A pie';
     const div = document.createElement('div');
-    div.className = 'route-option';
+    div.className = 'route-option mode-' + c.mode;
     div.innerHTML = `
+      <div class="route-option-icon">${icon}</div>
       <div class="route-option-info">
         <div class="route-option-label">${label}</div>
-        <div class="route-option-stats">${c.route.distanceKm.toFixed(1)} km · ~${Math.round(c.route.durationMin)} min</div>
+        <div class="route-option-stats"><span>${c.route.distanceKm.toFixed(1)} km</span> · <span>~${Math.round(c.route.durationMin)} min</span></div>
       </div>
       <button class="primary-btn route-option-pick">Elegir e iniciar viaje</button>
     `;
@@ -663,15 +730,31 @@ document.documentElement.style.setProperty('--sheet-peek', PEEK_PX + 'px');
 
 function stateTop(state) {
   const vh = window.innerHeight;
-  if (state === 'full') return vh * 0.06;
+  if (state === 'full') {
+    // No subir por debajo del buscador flotante: si lo tapa, el "agarre" de la bandeja
+    // queda inaccesible y no se puede volver a bajar arrastrando.
+    const pill = document.querySelector('.search-pill');
+    const pillBottom = pill ? pill.getBoundingClientRect().bottom : 0;
+    return Math.max(vh * 0.06, pillBottom + 10);
+  }
   if (state === 'half') return vh * 0.52;
   return vh - PEEK_PX; // peek
+}
+
+// Los botones flotantes (ubicacion / optimizar) siguen a la bandeja: si quedaran fijos
+// a la altura del modo "peek", con la bandeja abierta tapaban los botones de la primera
+// parada (navegar / quitar). --fab-offset es la altura que ocupa la bandeja desde abajo.
+function syncFabs(top) {
+  document.documentElement.style.setProperty('--fab-offset', (window.innerHeight - top) + 'px');
+  document.body.classList.toggle('sheet-high', top < window.innerHeight * 0.4);
 }
 
 function setSheetState(state, animate = true) {
   sheetState = state;
   sheet.style.transition = animate ? 'transform .28s cubic-bezier(.4,0,.2,1)' : 'none';
   sheet.style.transform = `translateY(${stateTop(state)}px)`;
+  sheet.dataset.cover = window.innerHeight - stateTop(state);
+  syncFabs(stateTop(state));
 }
 
 sheetHandle.addEventListener('pointerdown', (e) => {
@@ -679,6 +762,7 @@ sheetHandle.addEventListener('pointerdown', (e) => {
   dragStartY = e.clientY;
   dragStartTop = stateTop(sheetState);
   sheet.style.transition = 'none';
+  document.body.classList.add('sheet-dragging');
   sheetHandle.setPointerCapture(e.pointerId);
 });
 sheetHandle.addEventListener('pointermove', (e) => {
@@ -688,10 +772,12 @@ sheetHandle.addEventListener('pointermove', (e) => {
   const minTop = stateTop('full'), maxTop = stateTop('peek');
   top = Math.max(minTop, Math.min(maxTop, top));
   sheet.style.transform = `translateY(${top}px)`;
+  syncFabs(top);
 });
 function endSheetDrag(e) {
   if (!sheetDragging) return;
   sheetDragging = false;
+  document.body.classList.remove('sheet-dragging');
   const totalDy = Math.abs(e.clientY - dragStartY);
   if (totalDy < 6) {
     // fue un tap, no un arrastre: alternar entre peek y half
@@ -755,22 +841,45 @@ document.getElementById('modeSelect').addEventListener('change', (e) => {
 let searchTimer;
 const searchInput = document.getElementById('searchInput');
 const suggEl = document.getElementById('suggestions');
+const searchClearBtn = document.getElementById('searchClearBtn');
+
+function syncSearchClearBtn() {
+  searchClearBtn.classList.toggle('hidden', searchInput.value.length === 0);
+}
+
+searchClearBtn.addEventListener('click', () => {
+  clearTimeout(searchTimer); // que una busqueda pendiente no vuelva a llenar la lista
+  searchInput.value = '';
+  suggEl.innerHTML = '';
+  syncSearchClearBtn();
+  searchInput.focus();
+});
+
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);
+  syncSearchClearBtn();
   const q = searchInput.value.trim();
   suggEl.innerHTML = '';
   if (q.length < 3) return;
+  // Feedback inmediato: mientras esperamos la respuesta de Nominatim (300-800ms
+  // tipico), mostramos un spinner en vez de dejar la lista en blanco, asi no
+  // parece que el buscador no esta respondiendo al tipeo.
+  suggEl.innerHTML = '<li class="suggestions-loading"><span class="spinner-sm"></span> Buscando...</li>';
   searchTimer = setTimeout(async () => {
     try {
       const results = await searchSuggestions(q);
       suggEl.innerHTML = '';
+      if (!results.length) {
+        suggEl.innerHTML = '<li class="suggestions-empty">No se encontraron direcciones</li>';
+        return;
+      }
       results.forEach(r => {
         const li = document.createElement('li');
         li.textContent = r.display_name;
         li.addEventListener('click', async () => {
           try {
             const { isDup } = await addAddress(r.display_name, { lat: parseFloat(r.lat), lon: parseFloat(r.lon) });
-            searchInput.value = ''; suggEl.innerHTML = '';
+            searchInput.value = ''; suggEl.innerHTML = ''; syncSearchClearBtn();
             roadRoute = null; saveRoute(); render(); renderMap();
             showToast(isDup ? 'Agregada (hay otra muy cerca, revisá que no esté repetida)' : 'Dirección agregada');
           } catch (e) {
@@ -779,7 +888,9 @@ searchInput.addEventListener('input', () => {
         });
         suggEl.appendChild(li);
       });
-    } catch (e) { /* sin conexion, ignorar */ }
+    } catch (e) {
+      suggEl.innerHTML = '<li class="suggestions-empty">Sin conexión, probá de nuevo</li>';
+    }
   }, 500);
 });
 
